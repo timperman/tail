@@ -13,8 +13,8 @@ func main() {
 
   root := os.Getenv("VOLUMES_ROOT")
   if root == "" {
-    root = "/"
+    root = "/var/lib/tail-plugin"
   }
-  
+
 	plugin.Start(port, root)
 }

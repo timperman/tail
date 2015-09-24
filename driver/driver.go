@@ -36,7 +36,10 @@ type volume struct {
 }
 
 func New(base string, events chan<- []byte) (*VolumeDriver, error) {
+	log.Printf("tail volume driver using base=%v\n", base)
+
 	root := filepath.Join(base, volumesPathName)
+	log.Printf("using root=%v\n", root)
 
 	if err := os.MkdirAll(root, 0700); err != nil {
 		return nil, err
@@ -64,17 +67,18 @@ func New(base string, events chan<- []byte) (*VolumeDriver, error) {
 	for _, dir := range dirs {
 		name := filepath.Base(dir.Name())
     path := driver.getPath(name)
+		log.Printf("Found volume in root - name: %s, path: %s\n", name, path)
 		driver.volumes[name] = &volume{
 			name: name,
 			path: path,
 		}
-    watcher.Add(path)
+    driver.watcher.Add(path)
 	}
 
   go func() {
     for {
       select {
-      case event := <-watcher.Events:
+      case event := <-driver.watcher.Events:
         log.Printf("fsnotify event- op: %s name: %s", event.Op, event.Name)
         switch event.Op {
         case fsnotify.Create:
@@ -89,7 +93,7 @@ func New(base string, events chan<- []byte) (*VolumeDriver, error) {
           }
           delete(driver.tailcmds, event.Name)
         }
-      case err := <-watcher.Errors:
+      case err := <-driver.watcher.Errors:
         log.Printf("fsnotify error: %v\n", err)
       }
     }
@@ -114,11 +118,13 @@ func (d *VolumeDriver) Create(w http.ResponseWriter, r *http.Request) {
 	name := req["Name"].(string)
 
 	if _, found := d.volumes[name]; found {
+		log.Println("volume %s already exists\n", name)
 		util.JSONResponse(w, map[string]interface{}{"Err": nil})
 		return
 	}
 
 	path := d.getPath(name)
+	log.Println("creating volume path: %s\n", name)
 	if err := os.MkdirAll(path, 0755); err != nil {
 		if os.IsExist(err) {
 			util.JSONResponse(w, map[string]interface{}{"Err": fmt.Errorf("volume already exists under %s", filepath.Dir(path))})
@@ -132,6 +138,7 @@ func (d *VolumeDriver) Create(w http.ResponseWriter, r *http.Request) {
 		name: name,
 		path: path,
 	}
+	d.watcher.Add(path)
 
 	util.JSONResponse(w, map[string]interface{}{"Err": nil})
 }
@@ -171,6 +178,7 @@ func (d *VolumeDriver) Remove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	d.watcher.Remove(v.path)
 	delete(d.volumes, v.name)
 	if err = removePath(filepath.Dir(v.path)); err != nil {
 		util.JSONResponse(w, map[string]interface{}{"Err": err})
@@ -207,8 +215,18 @@ func removePath(path string) error {
 
 func (d *VolumeDriver) Mount(w http.ResponseWriter, r *http.Request) {
 	req, err := util.JSONDecode(r)
+	if err != nil {
+		util.JSONResponse(w, map[string]interface{}{"Err": err})
+		return
+	}
+
 	log.Printf("Mount request: %v\n", req)
-	util.JSONResponse(w, map[string]interface{}{"Mountpoint": req["Name"], "Err": err})
+	name := req["Name"].(string)
+	if v, ok := d.volumes[name]; ok {
+		util.JSONResponse(w, map[string]interface{}{"Mountpoint": v.path, "Err": nil})
+	} else {
+		util.JSONResponse(w, map[string]interface{}{"Err": fmt.Errorf("volume %v not found", name)})
+	}
 }
 
 func (d *VolumeDriver) Unmount(w http.ResponseWriter, r *http.Request) {
@@ -219,6 +237,16 @@ func (d *VolumeDriver) Unmount(w http.ResponseWriter, r *http.Request) {
 
 func (d *VolumeDriver) Path(w http.ResponseWriter, r *http.Request) {
 	req, err := util.JSONDecode(r)
+	if err != nil {
+		util.JSONResponse(w, map[string]interface{}{"Err": err})
+		return
+	}
+
 	log.Printf("Path request: %v\n", req)
-	util.JSONResponse(w, map[string]interface{}{"Mountpoint": req["Name"], "Err": err})
+	name := req["Name"].(string)
+	if v, ok := d.volumes[name]; ok {
+		util.JSONResponse(w, map[string]interface{}{"Mountpoint": v.path, "Err": nil})
+	} else {
+		util.JSONResponse(w, map[string]interface{}{"Err": fmt.Errorf("volume %v not found", name)})
+	}
 }

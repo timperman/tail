@@ -15,7 +15,7 @@ func JSONDecode(r *http.Request) (map[string]interface{}, error) {
 }
 
 func JSONResponse(w http.ResponseWriter, r map[string]interface{}) {
-	log.Printf("Responding with JSON: %v\n", r)
+	log.Printf("JSONResponse: %v\n", r)
 	if b, err := json.Marshal(r); err == nil {
 		w.Write(b)
 	} else {
