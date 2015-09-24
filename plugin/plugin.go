@@ -19,9 +19,9 @@ func Start(addr string, root string) {
 	http.HandleFunc("/Plugin.Activate", activate)
 
 	v, err := driver.New(root, broker.Notifier)
-  if err != nil {
-    log.Fatal("error creating driver: %v\n", err)
-  }
+	if err != nil {
+		log.Fatal("error creating driver: %v\n", err)
+	}
 
 	m := map[string]map[string]func(http.ResponseWriter, *http.Request){
 		"POST": {

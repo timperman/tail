@@ -9,9 +9,9 @@ import (
 	"path/filepath"
 	"strings"
 
-  "gopkg.in/fsnotify.v1"
-  "github.com/timperman/tail/util"
 	"github.com/timperman/tail/tailcmd"
+	"github.com/timperman/tail/util"
+	"gopkg.in/fsnotify.v1"
 )
 
 const (
@@ -21,13 +21,13 @@ const (
 )
 
 type VolumeDriver struct {
-	name    string
-	base    string
-	path    string
-	events  chan<- []byte
-  volumes map[string]*volume
+	name     string
+	base     string
+	path     string
+	events   chan<- []byte
+	volumes  map[string]*volume
 	tailcmds map[string]*tailcmd.TailCmd
-  watcher *fsnotify.Watcher
+	watcher  *fsnotify.Watcher
 }
 
 type volume struct {
@@ -45,18 +45,18 @@ func New(base string, events chan<- []byte) (*VolumeDriver, error) {
 		return nil, err
 	}
 
-  watcher, err := fsnotify.NewWatcher()
-  if err != nil {
-    return nil, err
-  }
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		return nil, err
+	}
 
 	driver := &VolumeDriver{
-		name:    DriverName,
-		base:    base,
-		path:    root,
-    volumes: make(map[string]*volume),
-    tailcmds: make(map[string]*tailcmd.TailCmd),
-    watcher: watcher,
+		name:     DriverName,
+		base:     base,
+		path:     root,
+		volumes:  make(map[string]*volume),
+		tailcmds: make(map[string]*tailcmd.TailCmd),
+		watcher:  watcher,
 	}
 
 	dirs, err := ioutil.ReadDir(root)
@@ -66,38 +66,38 @@ func New(base string, events chan<- []byte) (*VolumeDriver, error) {
 
 	for _, dir := range dirs {
 		name := filepath.Base(dir.Name())
-    path := driver.getPath(name)
+		path := driver.getPath(name)
 		log.Printf("Found volume in root - name: %s, path: %s\n", name, path)
 		driver.volumes[name] = &volume{
 			name: name,
 			path: path,
 		}
-    driver.watcher.Add(path)
+		driver.watcher.Add(path)
 	}
 
-  go func() {
-    for {
-      select {
-      case event := <-driver.watcher.Events:
-        log.Printf("fsnotify event- op: %s name: %s", event.Op, event.Name)
-        switch event.Op {
-        case fsnotify.Create:
-          if tc, err := tailcmd.TailPipe(event.Name, events); err != nil {
-            log.Printf("error starting tail command: %v\n", err)
-          } else {
-            driver.tailcmds[event.Name] = tc
-          }
-        case fsnotify.Remove:
-          if tc, ok := driver.tailcmds[event.Name]; ok {
-            tc.Stop()
-          }
-          delete(driver.tailcmds, event.Name)
-        }
-      case err := <-driver.watcher.Errors:
-        log.Printf("fsnotify error: %v\n", err)
-      }
-    }
-  }()
+	go func() {
+		for {
+			select {
+			case event := <-driver.watcher.Events:
+				log.Printf("fsnotify event- op: %s name: %s", event.Op, event.Name)
+				switch event.Op {
+				case fsnotify.Create:
+					if tc, err := tailcmd.TailPipe(event.Name, events); err != nil {
+						log.Printf("error starting tail command: %v\n", err)
+					} else {
+						driver.tailcmds[event.Name] = tc
+					}
+				case fsnotify.Remove:
+					if tc, ok := driver.tailcmds[event.Name]; ok {
+						tc.Stop()
+					}
+					delete(driver.tailcmds, event.Name)
+				}
+			case err := <-driver.watcher.Errors:
+				log.Printf("fsnotify error: %v\n", err)
+			}
+		}
+	}()
 
 	return driver, nil
 }
